@@ -98,3 +98,74 @@ export interface Stats {
   worker?: WorkerStats;
   database?: DatabaseStats;
 }
+
+// Dashboard Token Metrics
+export interface TokenMetrics {
+  totalObservations: number;
+  totalReadTokens: number;
+  totalDiscoveryTokens: number;
+  savings: number;
+  savingsPercent: number;
+  efficiencyGain: number;
+  avgReadTokensPerObs: number;
+  avgDiscoveryTokensPerObs: number;
+}
+
+export interface TokensByProject {
+  project: string;
+  observations: number;
+  readTokens: number;
+  discoveryTokens: number;
+  savings: number;
+  savingsPercent: number;
+}
+
+export interface TokensByType {
+  type: string;
+  count: number;
+  readTokens: number;
+  discoveryTokens: number;
+  avgReadTokens: number;
+  avgDiscoveryTokens: number;
+}
+
+export interface CompressionMetrics {
+  avgCompressionRatio: number;
+  totalOriginalSize: number;
+  totalCompressedSize: number;
+  compressionByType: Record<string, number>;
+}
+
+export interface EndlessModeProjection {
+  withoutEndlessMode: {
+    totalTokens: number;
+    discoveryTokens: number;
+    continuationTokens: number;
+  };
+  withEndlessMode: {
+    totalTokens: number;
+    discoveryTokens: number;
+    continuationTokens: number;
+  };
+  tokensSaved: number;
+  percentSaved: number;
+  efficiencyGain: number;
+}
+
+export interface PerformanceStats {
+  avgProcessingTime: number;
+  p50ProcessingTime: number;
+  p95ProcessingTime: number;
+  avgQueueDepth: number;
+  peakQueueDepth: number;
+  observationsPerMinute: number;
+}
+
+export interface DashboardMetrics {
+  tokens: TokenMetrics | null;
+  compression: CompressionMetrics | null;
+  projection: EndlessModeProjection | null;
+  performance: PerformanceStats | null;
+  system: Stats | null;
+  lastUpdated: number;
+}

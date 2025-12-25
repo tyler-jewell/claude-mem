@@ -38,6 +38,9 @@ import { SessionRoutes } from './worker/http/routes/SessionRoutes.js';
 import { DataRoutes } from './worker/http/routes/DataRoutes.js';
 import { SearchRoutes } from './worker/http/routes/SearchRoutes.js';
 import { SettingsRoutes } from './worker/http/routes/SettingsRoutes.js';
+import { TokenRoutes } from './worker/http/routes/TokenRoutes.js';
+import { TokenMetricsService } from './worker/TokenMetricsService.js';
+import { PerformanceTracker } from './worker/PerformanceTracker.js';
 
 export class WorkerService {
   private app: express.Application;
@@ -64,6 +67,12 @@ export class WorkerService {
   private dataRoutes: DataRoutes;
   private searchRoutes: SearchRoutes | null;
   private settingsRoutes: SettingsRoutes;
+  private tokenRoutes: TokenRoutes | null;
+
+  // Dashboard services
+  private tokenMetricsService: TokenMetricsService | null = null;
+  private performanceTracker: PerformanceTracker;
+  private lastTokenBroadcast: number = 0;
 
   // Initialization tracking
   private initializationComplete: Promise<void>;
@@ -104,6 +113,10 @@ export class WorkerService {
     // SearchRoutes needs SearchManager which requires initialized DB - will be created in initializeBackground()
     this.searchRoutes = null;
     this.settingsRoutes = new SettingsRoutes(this.settingsManager);
+
+    // TokenRoutes needs initialized DB - will be created in initializeBackground()
+    this.tokenRoutes = null;
+    this.performanceTracker = new PerformanceTracker();
 
     this.setupMiddleware();
     this.setupRoutes();
@@ -441,6 +454,12 @@ export class WorkerService {
       this.searchRoutes.setupRoutes(this.app); // Setup search routes now that SearchManager is ready
       logger.info('WORKER', 'SearchManager initialized and search routes registered');
 
+      // Initialize token metrics service and routes for dashboard
+      this.tokenMetricsService = new TokenMetricsService(this.dbManager.getSessionStore());
+      this.tokenRoutes = new TokenRoutes(this.tokenMetricsService, this.performanceTracker);
+      this.tokenRoutes.setupRoutes(this.app);
+      logger.info('WORKER', 'Token metrics service initialized and routes registered');
+
       // Connect to MCP server with timeout guard
       const mcpServerPath = path.join(__dirname, 'mcp-server.cjs');
       const transport = new StdioClientTransport({
@@ -645,6 +664,60 @@ export class WorkerService {
       isProcessing,
       queueDepth
     });
+  }
+
+  /**
+   * Broadcast token metrics update to SSE clients (throttled to 1/second)
+   * Called after observations are saved to update dashboard in real-time
+   *
+   * PUBLIC: Called by SDKAgent after observation processing
+   */
+  broadcastTokenUpdate(): void {
+    // Throttle to max 1 broadcast per second
+    const now = Date.now();
+    if (now - this.lastTokenBroadcast < 1000) {
+      return;
+    }
+    this.lastTokenBroadcast = now;
+
+    // Skip if token metrics service not initialized
+    if (!this.tokenMetricsService) {
+      return;
+    }
+
+    try {
+      const summary = this.tokenMetricsService.getSummary();
+      this.sseBroadcaster.broadcast({
+        type: 'token_update',
+        tokens: summary
+      });
+    } catch (error) {
+      logger.warn('WORKER', 'Failed to broadcast token update', {}, error as Error);
+    }
+  }
+
+  /**
+   * Record observation processing time for dashboard metrics
+   *
+   * PUBLIC: Called by SDKAgent after observation processing
+   * @param toolName - Type(s) of observations processed (comma-separated if multiple)
+   * @param durationMs - Total processing duration in milliseconds
+   * @param discoveryTokens - Tokens spent discovering this response
+   * @param observationCount - Number of observations in this processing batch
+   */
+  recordObservationProcessed(toolName: string, durationMs: number, discoveryTokens: number, observationCount: number): void {
+    this.performanceTracker.recordProcessingTime({
+      timestamp: Date.now(),
+      duration: durationMs,
+      toolName,
+      discoveryTokens,
+      observationCount,
+    });
+
+    // Also record a queue sample when observations are processed
+    const queueDepth = this.sessionManager.getTotalActiveWork();
+    const activeSessions = this.sessionManager.getActiveSessionCount();
+    this.performanceTracker.recordQueueSample(queueDepth, activeSessions);
   }
 }
 

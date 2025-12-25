@@ -2,17 +2,20 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Header } from './components/Header';
 import { Feed } from './components/Feed';
 import { ContextSettingsModal } from './components/ContextSettingsModal';
+import { DashboardPanel } from './components/DashboardPanel';
 import { useSSE } from './hooks/useSSE';
 import { useSettings } from './hooks/useSettings';
 import { useStats } from './hooks/useStats';
 import { usePagination } from './hooks/usePagination';
 import { useTheme } from './hooks/useTheme';
+import { useDashboardMetrics } from './hooks/useDashboardMetrics';
 import { Observation, Summary, UserPrompt } from './types';
 import { mergeAndDeduplicateByProject } from './utils/data';
 
 export function App() {
   const [currentFilter, setCurrentFilter] = useState('');
   const [contextPreviewOpen, setContextPreviewOpen] = useState(false);
+  const [dashboardOpen, setDashboardOpen] = useState(false);
   const [paginatedObservations, setPaginatedObservations] = useState<Observation[]>([]);
   const [paginatedSummaries, setPaginatedSummaries] = useState<Summary[]>([]);
   const [paginatedPrompts, setPaginatedPrompts] = useState<UserPrompt[]>([]);
@@ -21,6 +24,7 @@ export function App() {
   const { settings, saveSettings, isSaving, saveStatus } = useSettings();
   const { stats, refreshStats } = useStats();
   const { preference, resolvedTheme, setThemePreference } = useTheme();
+  const { metrics, isLoading: isDashboardLoading, refresh: refreshDashboard } = useDashboardMetrics();
   const pagination = usePagination(currentFilter);
 
   // When filtering by project: ONLY use paginated data (API-filtered)
@@ -51,6 +55,11 @@ export function App() {
   // Toggle context preview modal
   const toggleContextPreview = useCallback(() => {
     setContextPreviewOpen(prev => !prev);
+  }, []);
+
+  // Toggle dashboard panel
+  const toggleDashboard = useCallback(() => {
+    setDashboardOpen(prev => !prev);
   }, []);
 
   // Handle loading more data
@@ -97,6 +106,8 @@ export function App() {
         themePreference={preference}
         onThemeChange={setThemePreference}
         onContextPreviewToggle={toggleContextPreview}
+        onDashboardToggle={toggleDashboard}
+        isDashboardOpen={dashboardOpen}
       />
 
       <Feed
@@ -115,6 +126,14 @@ export function App() {
         onSave={saveSettings}
         isSaving={isSaving}
         saveStatus={saveStatus}
+      />
+
+      <DashboardPanel
+        isOpen={dashboardOpen}
+        onClose={toggleDashboard}
+        metrics={metrics}
+        isLoading={isDashboardLoading}
+        onRefresh={refreshDashboard}
       />
     </>
   );

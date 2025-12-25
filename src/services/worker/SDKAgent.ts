@@ -256,6 +256,8 @@ export class SDKAgent {
    * @param discoveryTokens - Token cost for discovering this response (delta, not cumulative)
    */
   private async processSDKResponse(session: ActiveSession, text: string, worker: any | undefined, discoveryTokens: number): Promise<void> {
+    const processingStart = Date.now();
+
     // Parse observations
     const observations = parseObservations(text, session.claudeSessionId);
 
@@ -330,7 +332,17 @@ export class SDKAgent {
             created_at_epoch: createdAtEpoch
           }
         });
+
+        // Broadcast token metrics update for dashboard (throttled)
+        worker.broadcastTokenUpdate();
       }
+    }
+
+    // Record processing time for dashboard metrics (once per response, not per observation)
+    if (worker && observations.length > 0) {
+      const processingDuration = Date.now() - processingStart;
+      const toolTypes = observations.map(o => o.type || 'unknown').join(',');
+      worker.recordObservationProcessed(toolTypes, processingDuration, discoveryTokens, observations.length);
     }
 
     // Parse summary
